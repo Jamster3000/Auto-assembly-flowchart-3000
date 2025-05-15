@@ -18,7 +18,7 @@ This is a python script I created which first reads all assmebly files in the gi
 
 ---
 
-To recognise the instructions/finds the instructions, it uses a basic python dictionary, which helps the code diffieniate what different lines and functions are supposed to achieve - See (instruction_categories.py)[https://github.com/Jamster3000/Auto-assembly-flowchart-3000/blob/main/instruction_categories.py]. This is put in another file to keep the code less cluttered. 
+To recognise the instructions/finds the instructions, it uses a basic python dictionary, which helps the code diffieniate what different lines and functions are supposed to achieve - See [instruction_categories.py](https://github.com/Jamster3000/Auto-assembly-flowchart-3000/blob/main/instruction_categories.py). This is put in another file to keep the code less cluttered. 
 
 The code uses pyvis.Network to interact with the actual JavaScript vis network library - this is what is creating the actual flowcharts, using nodes. The code also provides each node a colour depending on what they do (e.g., Data operations, Control Flow, etc.). The colours are explained in a fixed legend and a tooltip to explain what each legend means.
 
