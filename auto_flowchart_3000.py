@@ -117,7 +117,7 @@ def parse_assembly_code(file_paths=None):
         purpose = determine_purpose(data["raw_label"], data["instructions"], data["comments"])
 
         label_comments = data["comments"]
-        description = get_comment_description(label_comments)
+        description, full_description = get_comment_description(label_comments)
 
         if description:
             display_label = f"{data['raw_label']}\n({purpose})\n\"{description}\"\n[{data['file']}]"
@@ -131,7 +131,7 @@ def parse_assembly_code(file_paths=None):
             tooltip += f"Section: {data['section']}\n"
 
         if description:
-            tooltip += f"Description: {description}\n"
+            tooltip += f"Description: {full_description}\n"
 
         if data.get("is_local", False):
             if data.get("parent"):
@@ -230,109 +230,210 @@ def parse_assembly_code(file_paths=None):
                                         net.add_edge(label, other_label, color="#AAAAAA", title=f'Uses {extern_symbol}', style='dashed')
                                         break
 
-    # Update network options with a hybrid approach
-    net.set_options("""
-    {
-        "physics": {
-            "enabled": true,
-            "hierarchicalRepulsion": {
-                "nodeDistance": 200,
-                "centralGravity": 0.03,
-                "springLength": 180,
-                "springConstant": 0.01,
-                "avoidOverlap": 0.9
-            }
-        },
-        "layout": {
-            "hierarchical": {
-                "enabled": true,
-                "direction": "UD",
-                "sortMethod": "directed",
-                "levelSeparation": 170,
-                "nodeSpacing": 200,
-                "treeSpacing": 200,
-                "blockShifting": true,
-                "edgeMinimization": true
-            }
-        },
-        "edges": {
-            "smooth": {
-                "type": "vertical",
-                "forceDirection": "vertical",
-                "roundness": 0.2
-            },
-            "arrows": {
-                "to": {
+    #find the optimal layout
+    #There is issues with linear flowcharts and non-linear multi-level ones.
+    nodes = list(all_labels.keys())
+    edges_count = len(net.get_edges())
+
+    #number of levels in hierarchy
+    levels = {}
+    for label in nodes:
+        paths_to_node = 0
+        for other in nodes:
+            if other != label:
+                for instr in all_labels[other]["instructions"]:
+                    if all_labels[label]["raw_label"] in instr:
+                        paths_to_node += 1
+        levels[label] = paths_to_node
+
+    max_level = max(levels.values()) if levels else 0
+    avg_connections = edges_count / len(nodes) if nodes else 0
+
+    # Graph complexity detection - simplified
+    edges = net.get_edges()
+    node_connections = {}
+
+    # Calculate in/out connections for each node
+    for edge in edges:
+        from_node = edge["from"]
+        to_node = edge["to"]
+
+        if from_node not in node_connections:
+            node_connections[from_node] = {"in": 0, "out": 0}
+        if to_node not in node_connections:
+            node_connections[to_node] = {"in": 0, "out": 0}
+
+        node_connections[from_node]["out"] += 1
+        node_connections[to_node]["in"] += 1
+
+    # Count nodes with simple linear structure (max 1 input, max 1 output)
+    linear_nodes = 0
+    total_nodes = len(nodes)
+    for node, connections in node_connections.items():
+        if connections["in"] <= 1 and connections["out"] <= 1:
+            linear_nodes += 1
+
+    # Determine graph complexity
+    is_mostly_linear = (linear_nodes / total_nodes) >= 0.75 if total_nodes > 0 else False
+    is_mostly_same_level = max_level <= 2
+
+    # Special case for long assembly functions with many nested blocks
+    # but still fundamentally linear in execution
+    if max_level >= 30 and total_nodes >= 20 and total_nodes <= 60:
+        is_linear = True
+    else:
+        is_linear = is_mostly_linear or is_mostly_same_level
+
+    if is_linear:
+        net.set_options("""
+            {
+                "physics": {
                     "enabled": true,
-                    "scaleFactor": 0.7
+                    "hierarchicalRepulsion": {
+                        "nodeDistance": 550,
+                        "centralGravity": 0.01,
+                        "springLength": 500,
+                        "springConstant": 0.01,
+                        "avoidOverlap": 1.0
+                    }
+                },
+                "layout": {
+                    "hierarchical": {
+                        "enabled": true,
+                        "direction": "UD",
+                        "sortMethod": "directed",
+                        "levelSeparation": 250,
+                        "nodeSpacing": 700,
+                        "treeSpacing": 300,
+                        "blockShifting": true,
+                        "edgeMinimization": true
+                    }
+                },
+                "edges": {
+                    "smooth": {
+                        "type": "vertical",
+                        "forceDirection": "vertical",
+                        "roundness": 0.2
+                    },
+                    "arrows": {
+                        "to": {
+                            "enabled": true,
+                            "scaleFactor": 0.7
+                        }
+                    },
+                    "font": {
+                        "background": "white",
+                        "strokeWidth": 3,
+                        "strokeColor": "white"
+                    },
+                    "width": 1.5,
+                    "selectionWidth": 3
+                },
+                "nodes": {
+                    "font": {
+                        "background": "white",
+                        "strokeWidth": 4,
+                        "strokeColor": "white",
+                        "size": 14
+                    },
+                    "margin": 12,
+                    "borderWidth": 2,
+                    "shadow": {
+                        "enabled": true,
+                        "size": 4,
+                        "x": 2,
+                        "y": 2,
+                        "color": "rgba(0,0,0,0.2)"
+                    }
+                },
+                "interaction": {
+                    "zoomView": true,
+                    "dragView": true,
+                    "hover": true,
+                    "navigationButtons": true
+                }
+            }
+            """)
+    else:
+        print("complex")
+        #complex layout
+        net.set_options("""
+        {
+            "physics": {
+                "enabled": true,
+                "hierarchicalRepulsion": {
+                    "nodeDistance": 350,
+                    "centralGravity": 0.005, 
+                    "springLength": 350,
+                    "springConstant": 0.005, 
+                    "avoidOverlap": 1.0
+                },
+                "stabilization": {
+                    "iterations": 2000
                 }
             },
-            "font": {
-                "background": "white",
-                "strokeWidth": 3,
-                "strokeColor": "white"
+            "layout": {
+                "hierarchical": {
+                    "enabled": true,
+                    "direction": "UD",
+                    "sortMethod": "directed",
+                    "levelSeparation": 450,  
+                    "nodeSpacing": 400,      
+                    "treeSpacing": 500,   
+                    "blockShifting": false, 
+                    "edgeMinimization": false
+                }
             },
-            "width": 1.5,
-            "selectionWidth": 3
-        },
-        "nodes": {
-            "font": {
-                "background": "white",
-                "strokeWidth": 4,
-                "strokeColor": "white",
-                "size": 14
+            "edges": {
+                "smooth": {
+                    "enabled": true,
+                    "type": "straightCross",  
+                    "roundness": 0         
+                },
+                "arrows": {
+                    "to": {
+                        "enabled": true,
+                        "scaleFactor": 0.7
+                    }
+                },
+                "color": {
+                    "inherit": "from",       
+                    "opacity": 0.7         
+                },
+                "width": 1.0,              
+                "selectionWidth": 2,
+                "hoverWidth": 1.5
             },
-            "margin": 12,
-            "borderWidth": 2,
-            "shadow": {
-                "enabled": true,
-                "size": 4,
-                "x": 2,
-                "y": 2,
-                "color": "rgba(0,0,0,0.2)"
+            "nodes": {
+                "shape": "box",
+                "margin": 10,
+                "widthConstraint": {
+                    "maximum": 250      
+                },
+                "font": {
+                    "size": 14,
+                    "face": "arial",
+                    "background": "white",
+                    "strokeWidth": 3,
+                    "strokeColor": "white"
+                },
+                "shadow": {
+                    "enabled": true,
+                    "size": 3,
+                    "x": 2,
+                    "y": 2
+                }
+            },
+            "interaction": {
+                "hover": true,
+                "multiselect": true,
+                "keyboard": {
+                    "enabled": true
+                },
+                "navigationButtons": true
             }
-        },
-        "interaction": {
-            "zoomView": true,
-            "dragView": true,
-            "hover": true,
-            "navigationButtons": true
         }
-    }
-    """)
-
-    '''
-    #a more grid like approach
-    net.set_options("""
-    {
-        "physics": {
-            "enabled": true,
-            "hierarchicalRepulsion": {
-                "nodeDistance": 200,
-                "centralGravity": 0.01,
-                "springLength": 200,
-                "springConstant": 0.01
-            }
-        },
-        "layout": {
-            "hierarchical": {
-                "enabled": true,
-                "direction": "UD",
-                "sortMethod": "directed",
-                "levelSeparation": 250,
-                "nodeSpacing": 200
-            }
-        },
-        "edges": {
-            "smooth": true
-        },
-        "interaction": {
-            "zoomView": true,
-            "dragView": true
-        }
-    }
-    """)
-    '''
+        """)
 
     return net
 
@@ -409,22 +510,23 @@ def get_comment_description(comments):
     """
 
     if not comments:
-        return ""
+        return "", ""
     
     #join non-empty comments
     all_comments = " ".join([c.strip().lstrip(';').lstrip('/').lstrip('#').strip() for c in comments if c])
 
     if not all_comments:
-        return ""
+        return "", ""
     
     for comment in comments:
         cleaned = comment.strip().lstrip(';').lstrip('/').lstrip('#').strip()
         if cleaned and len(cleaned) >= 3:
             if len(cleaned) > 17:
-                cleaned = cleaned[:14] + "..."
-            return cleaned
-    
-    return ""
+                cleaned_updated = cleaned[:14] + "..."
+                return cleaned_updated, cleaned
+            return cleaned, cleaned
+
+    return "", ""
 
 def determine_purpose(label, instructions, comments):
     """
@@ -1017,7 +1119,7 @@ def create_flowchart(files=None, recursive=True, analyze_dependencies=True):
     if files is None:
         files = find_asm_files()
         if not files:
-            print("No .asm or .S files found in the current directory.")
+            print("No assmebly files found in the current directory.")
             return
         
     #build list of files including dependencies
