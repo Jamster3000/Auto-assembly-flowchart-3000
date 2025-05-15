@@ -9,7 +9,7 @@
 
 # Contribution
 
-#License
+# License
 
 ![GitHub issues](https://img.shields.io/github/issues/Jamster3000/Auto-assembly-flowchart-3000)
 ![Last Commit](https://img.shields.io/github/last-commit/Jamster3000/Auto-assembly-flowchart-3000)
